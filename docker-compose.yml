@@ -1,0 +1,36 @@
+services:
+  cloud:
+    build: .
+    command: uvicorn temperature_pqc.services.cloud:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_PATH: /app/data/readings.db
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      - cloud-data:/app/data
+
+  gateway:
+    build: .
+    command: uvicorn temperature_pqc.services.gateway:app --host 0.0.0.0 --port 8001
+    environment:
+      CLOUD_URL: http://cloud:8000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8001:8001"
+    depends_on:
+      - cloud
+
+  sensor:
+    build: .
+    command: python -m temperature_pqc.services.sensor --interval ${SENSOR_INTERVAL_SECONDS:-3}
+    environment:
+      GATEWAY_URL: http://gateway:8001
+      SENSOR_ID: ${SENSOR_ID:-sensor-01}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+volumes:
+  cloud-data:
