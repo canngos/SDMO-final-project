@@ -20,6 +20,11 @@ Gateway:
 - `POST /v1/readings`
 - `GET /health`
 
+Sensor:
+
+- `GET /v1/readings/latest`: returns the latest locally generated raw reading.
+- `GET /health`: reports that the sensor API process is running.
+
 Cloud:
 
 - `GET /v1/crypto/public-key`
@@ -39,4 +44,3 @@ Cloud:
 - The containerized environment is a local test setup, not an automated deployment pipeline.
 
 These limitations are intentional starting conditions, not claims about a completed solution. The group should critically evaluate the implementation, discover additional issues, and record accepted, modified, and rejected AI output.
-
