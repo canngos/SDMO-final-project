@@ -41,3 +41,33 @@
 **Prompt:** Diagnose and resolve the gateway's `httpx.ConnectError: [Errno -2] Name or service not known` error while forwarding sensor readings to the cloud service.
 
 **Output:** Identified that the running cloud container was detached from the Docker Compose network, preventing the gateway from resolving the `cloud` hostname. Rebuilt and recreated the stack, verified Docker DNS resolution, and confirmed end-to-end sensor delivery. Added Compose health checks and dependency conditions so the gateway waits for a healthy cloud and the sensor waits for a healthy gateway during future startups.
+
+## Task 8 - Plan the ML-KEM Migration and Fallback
+
+**Prompt:** Prepare an implementation plan for integrating ML-KEM into the existing gateway-to-cloud communication path, including staged migration, compatibility, testing, operational rollout, and secure fallback scenarios. Do not implement the plan until it has been reviewed and approved.
+
+**Output:** Created a reviewable ML-KEM migration plan proposing ML-KEM-768, versioned RSA and ML-KEM envelopes, cloud-side dual-protocol acceptance, explicit gateway algorithm modes, pinned ML-KEM key identity, persistent cloud keys, downgrade-resistant manual fallback, staged rollout gates, a compatibility and failure matrix, required tests, rollback steps, and report evidence. No application code was changed as part of this planning task.
+
+## Task 9 - Evaluate Dual-Format Acceptance
+
+**Prompt:** Explain why the migration design allows the cloud service to accept both the existing RSA envelope and the new ML-KEM envelope, and evaluate the advantages, disadvantages, and necessary security controls of this approach.
+
+**Output:** Explained that temporary dual-format acceptance supports staged deployment, service continuity, compatibility testing, and controlled rollback when gateways cannot all be upgraded simultaneously. Identified the main disadvantages as a larger attack surface, downgrade risk, increased implementation and testing complexity, operational ambiguity, and delayed retirement of RSA. Recommended explicit version and algorithm identifiers, strict schema separation, gateway-side algorithm configuration, prohibition of automatic fallback, RSA usage monitoring, a cloud-side disable switch, and a defined retirement deadline.
+
+## Task 10 - Implement the Dual-Protocol Cloud Migration Stage
+
+**Prompt:** Begin the staged ML-KEM migration by updating only the cloud server. Preserve compatibility with the existing RSA gateway so the cloud-side changes can be reviewed before modifying the gateway.
+
+**Output:** Upgraded the cloud to support strict versioned RSA and ML-KEM-768 envelopes, added an ML-KEM public-key endpoint, implemented ML-KEM decapsulation with HKDF-SHA-256 and AES-256-GCM authentication, persisted the ML-KEM seed in the cloud data volume with restricted permissions, added an explicit RSA-ingestion policy flag, and recorded the selected security mode with each reading. Added cloud migration tests covering RSA compatibility, valid ML-KEM ingestion, key persistence, RSA disablement, strict algorithm validation, and ciphertext tampering. All eight tests passed. Rebuilt and deployed only the cloud container, verified that the ML-KEM key identity survived a restart, and confirmed that the unchanged gateway and running sensor continued delivering readings through RSA.
+
+## Task 11 - Add End-to-End Diagnostic Logging
+
+**Prompt:** Add informative application logs that make it easier to follow and debug the complete sensor-to-gateway-to-cloud flow after redeployment.
+
+**Output:** Added searchable, correlation-friendly log events across sensor sampling and forwarding, gateway receipt and cloud forwarding, RSA and ML-KEM cryptographic operations, cloud protocol selection and validation, and database persistence. Each stage carries the reading `message_id` and relevant public metadata such as algorithm, security mode, status code, and key identifier. Sensitive plaintext, private keys, shared secrets, and derived encryption keys are not logged. Documented the Docker log-following command and verified the changes with eight passing tests and successful gateway and sensor service imports.
+
+## Task 12 - Document ML-KEM Migration Phase 1
+
+**Prompt:** Create a reference document named `ML-KEM-Phase1.md` in the documentation folder that summarizes the work completed during the first phase of the ML-KEM migration.
+
+**Output:** Created a Phase 1 reference summarizing the migration objective, resulting system state, cloud-side ML-KEM implementation, strict versioned protocols, RSA migration control, persistent configuration, diagnostic logging, test and Docker verification evidence, observed limitations, and the requirements for the next gateway migration phase.

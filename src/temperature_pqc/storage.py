@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
 
 from temperature_pqc.models import TemperatureReading
+
+LOGGER = logging.getLogger("temperature_pqc.storage")
 
 
 class ReadingStore:
@@ -28,6 +31,7 @@ class ReadingStore:
                 )
                 """
             )
+        LOGGER.info("event=database_ready path=%s", self.database_path)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path, timeout=5)
@@ -59,8 +63,17 @@ class ReadingStore:
                         security_mode,
                     ),
                 )
+            LOGGER.info(
+                "event=reading_persisted message_id=%s security_mode=%s",
+                reading.message_id,
+                security_mode,
+            )
             return True
         except sqlite3.IntegrityError:
+            LOGGER.warning(
+                "event=reading_persist_conflict message_id=%s",
+                reading.message_id,
+            )
             return False
 
     def list_recent(self, limit: int) -> list[dict[str, object]]:
@@ -75,4 +88,5 @@ class ReadingStore:
                 """,
                 (limit,),
             ).fetchall()
+        LOGGER.info("event=readings_loaded count=%s limit=%s", len(rows), limit)
         return [dict(row) for row in rows]

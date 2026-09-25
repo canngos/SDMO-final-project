@@ -13,13 +13,28 @@ def env_positive_float(name: str, default: float) -> float:
     return value
 
 
+def env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name, str(default)).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean value")
+
+
 @dataclass(frozen=True)
 class CloudSettings:
     database_path: str
+    mlkem_seed_path: str = "data/mlkem-768.seed"
+    allow_rsa_ingest: bool = True
 
     @classmethod
     def from_env(cls) -> CloudSettings:
-        return cls(database_path=os.getenv("DATABASE_PATH", "data/readings.db"))
+        return cls(
+            database_path=os.getenv("DATABASE_PATH", "data/readings.db"),
+            mlkem_seed_path=os.getenv("MLKEM_SEED_PATH", "data/mlkem-768.seed"),
+            allow_rsa_ingest=env_bool("ALLOW_RSA_INGEST", True),
+        )
 
 
 @dataclass(frozen=True)

@@ -4,6 +4,8 @@ services:
     command: uvicorn temperature_pqc.services.cloud:app --host 0.0.0.0 --port 8000
     environment:
       DATABASE_PATH: /app/data/readings.db
+      MLKEM_SEED_PATH: /app/data/mlkem-768.seed
+      ALLOW_RSA_INGEST: ${ALLOW_RSA_INGEST:-true}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"

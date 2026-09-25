@@ -4,6 +4,22 @@ This is the intentionally incomplete starting system for a Software Development,
 
 The baseline is functional, but it is not the final solution. RSA is vulnerable to a sufficiently capable quantum computer, test coverage is deliberately limited, CI only runs the small test suite, and operations support consists of basic console logs and a liveness endpoint. Those gaps are maintenance work to discover, evaluate, and improve with later AI prompts.
 
+## Migration status
+
+Stage 1 is active: the cloud is dual-protocol capable, while the gateway intentionally remains on the version 1 RSA path. The cloud publishes an ML-KEM-768 public key at `GET /v2/crypto/public-key`, persists its ML-KEM seed in the cloud data volume, and can validate version 2 ML-KEM envelopes. RSA ingestion remains enabled by default for backward compatibility and can be controlled with `ALLOW_RSA_INGEST`.
+
+The cloud never interprets a failed ML-KEM request as permission to retry with RSA. Algorithm selection is explicit in the envelope, and automatic downgrade is not supported.
+
+### Following the message flow
+
+Service logs use searchable `event=<name>` fields and carry the same `message_id` through the sensor, gateway, cryptographic operation, cloud validation, and database write. Key identifiers and selected algorithms are logged, but private keys, shared secrets, derived AES keys, and plaintext payloads are not.
+
+```bash
+docker compose logs --follow sensor gateway cloud
+```
+
+Copy a `message_id` from `event=reading_sampled` and search for it in later events such as `gateway_reading_received`, `cloud_envelope_received`, `cloud_payload_validated`, and `reading_persisted`.
+
 ## Architecture
 
 ```mermaid
@@ -81,4 +97,3 @@ The AI log deliberately marks human review as pending. Group members must run th
 - Cloud RSA keys are regenerated whenever the process restarts.
 - The gateway does not authenticate the public-key response.
 - SQLite supports the demo workload, not a distributed production deployment.
-
