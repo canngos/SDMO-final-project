@@ -66,7 +66,7 @@ curl -X POST http://localhost:8001/v1/readings \
 
 - [Initial technical documentation](docs/technical-documentation.md)
 - [Baseline notes](docs/baseline-and-migration.md)
-- [AI-assisted development log](docs/ai-assisted-development-log.md)
+- [AI-assisted development log](docs/ai-assisted-development-log-{student-name}.md)
 - [Seven-week project plan](docs/project-plan.md)
 
 The AI log deliberately marks human review as pending. Group members must run the system, find problems, review generated code, and record what they accept, modify, or reject. Do not use AI to write the individual reflection; the course brief explicitly prohibits that.
