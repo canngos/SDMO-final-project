@@ -26,6 +26,8 @@ docker compose up --build
 
 The simulator sends one reading every three seconds. Useful endpoints:
 
+- Latest raw sensor reading: <http://localhost:8002/v1/readings/latest>
+- Sensor health: <http://localhost:8002/health>
 - Cloud readings: <http://localhost:8000/v1/readings>
 - Cloud health: <http://localhost:8000/health>
 - Gateway health: <http://localhost:8001/health>
@@ -49,7 +51,7 @@ Run each process in a separate terminal:
 ```bash
 uvicorn temperature_pqc.services.cloud:app --port 8000
 uvicorn temperature_pqc.services.gateway:app --port 8001
-python -m temperature_pqc.services.sensor --interval 3
+uvicorn temperature_pqc.services.sensor:app --port 8002
 ```
 
 Send one manual reading:

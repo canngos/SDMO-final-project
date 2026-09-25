@@ -33,3 +33,20 @@ class GatewaySettings:
             cloud_url=os.getenv("CLOUD_URL", "http://localhost:8000").rstrip("/"),
             timeout_seconds=env_positive_float("HTTP_TIMEOUT_SECONDS", 5.0),
         )
+
+
+@dataclass(frozen=True)
+class SensorSettings:
+    gateway_url: str
+    sensor_id: str
+    interval_seconds: float
+    timeout_seconds: float
+
+    @classmethod
+    def from_env(cls) -> SensorSettings:
+        return cls(
+            gateway_url=os.getenv("GATEWAY_URL", "http://localhost:8001").rstrip("/"),
+            sensor_id=os.getenv("SENSOR_ID", "sensor-01"),
+            interval_seconds=env_positive_float("SENSOR_INTERVAL_SECONDS", 3.0),
+            timeout_seconds=env_positive_float("HTTP_TIMEOUT_SECONDS", 5.0),
+        )

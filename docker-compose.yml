@@ -9,6 +9,18 @@ services:
       - "8000:8000"
     volumes:
       - cloud-data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   gateway:
     build: .
@@ -19,18 +31,47 @@ services:
     ports:
       - "8001:8001"
     depends_on:
-      - cloud
+      cloud:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   sensor:
     build: .
-    command: python -m temperature_pqc.services.sensor --interval ${SENSOR_INTERVAL_SECONDS:-3}
+    command: uvicorn temperature_pqc.services.sensor:app --host 0.0.0.0 --port 8002
     environment:
       GATEWAY_URL: http://gateway:8001
       SENSOR_ID: ${SENSOR_ID:-sensor-01}
+      SENSOR_INTERVAL_SECONDS: ${SENSOR_INTERVAL_SECONDS:-3}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8002:8002"
     depends_on:
-      - gateway
+      gateway:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8002/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
 volumes:
   cloud-data:
