@@ -17,8 +17,7 @@ Run the system before modifying it and record reproducible evidence:
 - End-to-end latency and failure behavior when the cloud is unavailable.
 - Security and maintenance findings in the generated code.
 
-Do not write expected numbers into the report. Run measurements and preserve the commands and outputs. Add the exact prompts used for later changes to `ai-assisted-development-log.md`.
-
+Keep track of the prompts and outputs for each task in a student-name-labeled markdown file. The prompts should be rewritten in professional language for the final report, and the outputs should be summarized in a concise, report-ready format.
 ## Modernization status
 
 ML-KEM integration, migration/fallback design, stronger automated tests, completed CI/CD, deployment hardening, and useful operational monitoring are intentionally **not implemented yet**. They are the next project stages.
