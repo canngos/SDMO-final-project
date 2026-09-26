@@ -6,9 +6,11 @@ The baseline is functional, but it is not the final solution. RSA is vulnerable 
 
 ## Migration status
 
-Stage 1 is active: the cloud is dual-protocol capable, while the gateway intentionally remains on the version 1 RSA path. The cloud publishes an ML-KEM-768 public key at `GET /v2/crypto/public-key`, persists its ML-KEM seed in the cloud data volume, and can validate version 2 ML-KEM envelopes. RSA ingestion remains enabled by default for backward compatibility and can be controlled with `ALLOW_RSA_INGEST`.
+Stage 2 is implemented but remains opt-in for review: the cloud is dual-protocol capable, and the gateway supports explicit `rsa` and `mlkem` modes. RSA remains the default until the operator deliberately configures an ML-KEM canary. The cloud publishes an ML-KEM-768 public key at `GET /v2/crypto/public-key`, persists its ML-KEM seed in the cloud data volume, and validates version 2 ML-KEM envelopes. RSA ingestion remains enabled by default for backward compatibility and can be controlled with `ALLOW_RSA_INGEST`.
 
 The cloud never interprets a failed ML-KEM request as permission to retry with RSA. Algorithm selection is explicit in the envelope, and automatic downgrade is not supported.
+
+To prepare an ML-KEM canary, read the cloud's public-key document and copy its 64-character `key_id` into `EXPECTED_MLKEM_KEY_ID`. Then set `CRYPTO_MODE=mlkem` and recreate the gateway. A missing or mismatched key ID causes ML-KEM mode to fail closed; it never invokes the RSA endpoint as a fallback.
 
 ### Following the message flow
 

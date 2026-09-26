@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -11,7 +12,11 @@ from pathlib import Path
 from uuid import UUID
 
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric.mlkem import MLKEM768PrivateKey
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives.asymmetric.mlkem import (
+    MLKEM768PrivateKey,
+    MLKEM768PublicKey,
+)
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -25,6 +30,10 @@ from temperature_pqc.models import (
 )
 
 LOGGER = logging.getLogger("temperature_pqc.crypto")
+
+
+class MlKemPublicKeyError(ValueError):
+    """The received ML-KEM public key is malformed or violates the configured pin."""
 
 
 def _b64encode(data: bytes) -> str:
@@ -59,6 +68,12 @@ def derive_mlkem_aes_key(*, shared_secret: bytes, key_id: str, message_id: UUID)
         salt=None,
         info=info,
     ).derive(shared_secret)
+
+
+def ensure_mlkem_available() -> None:
+    """Fail at startup when the installed backend cannot provide ML-KEM-768."""
+    MLKEM768PrivateKey.generate()
+    LOGGER.info("event=mlkem_capability_verified parameter_set=ML-KEM-768")
 
 
 class LegacyCloudKeyPair:
@@ -211,6 +226,56 @@ def encrypt_for_cloud(
     )
     LOGGER.info(
         "event=rsa_envelope_created message_id=%s key_id=%s",
+        message_id,
+        public_document.key_id,
+    )
+    return envelope
+
+
+def encrypt_for_cloud_mlkem(
+    public_document: MlKemPublicKeyDocument,
+    expected_key_id: str,
+    message_id: UUID,
+    plaintext: bytes,
+) -> MlKemEncryptedEnvelope:
+    if not hmac.compare_digest(public_document.key_id, expected_key_id):
+        raise MlKemPublicKeyError("ML-KEM key pin mismatch")
+
+    try:
+        public_bytes = _b64decode(public_document.public_key_b64)
+    except ValueError as exc:
+        raise MlKemPublicKeyError("invalid ML-KEM public-key encoding") from exc
+
+    calculated_key_id = hashlib.sha256(public_bytes).hexdigest()
+    if not hmac.compare_digest(calculated_key_id, public_document.key_id):
+        raise MlKemPublicKeyError("ML-KEM public-key fingerprint mismatch")
+
+    try:
+        public_key = MLKEM768PublicKey.from_public_bytes(public_bytes)
+        shared_secret, kem_ciphertext = public_key.encapsulate()
+    except (UnsupportedAlgorithm, ValueError) as exc:
+        raise MlKemPublicKeyError("invalid ML-KEM public key") from exc
+
+    aes_key = derive_mlkem_aes_key(
+        shared_secret=shared_secret,
+        key_id=public_document.key_id,
+        message_id=message_id,
+    )
+    nonce = os.urandom(12)
+    ciphertext = AESGCM(aes_key).encrypt(
+        nonce,
+        plaintext,
+        mlkem_aad(key_id=public_document.key_id, message_id=message_id),
+    )
+    envelope = MlKemEncryptedEnvelope(
+        key_id=public_document.key_id,
+        message_id=message_id,
+        kem_ciphertext=_b64encode(kem_ciphertext),
+        nonce=_b64encode(nonce),
+        ciphertext=_b64encode(ciphertext),
+    )
+    LOGGER.info(
+        "event=mlkem_envelope_created message_id=%s key_id=%s",
         message_id,
         public_document.key_id,
     )

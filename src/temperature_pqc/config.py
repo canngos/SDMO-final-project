@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
+from typing import Literal
 
 
 def env_positive_float(name: str, default: float) -> float:
@@ -41,12 +43,29 @@ class CloudSettings:
 class GatewaySettings:
     cloud_url: str
     timeout_seconds: float
+    crypto_mode: Literal["rsa", "mlkem"] = "rsa"
+    expected_mlkem_key_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.crypto_mode not in {"rsa", "mlkem"}:
+            raise ValueError("CRYPTO_MODE must be either 'rsa' or 'mlkem'")
+        if self.crypto_mode == "mlkem":
+            if self.expected_mlkem_key_id is None:
+                raise ValueError("EXPECTED_MLKEM_KEY_ID is required in ML-KEM mode")
+            if re.fullmatch(r"[a-f0-9]{64}", self.expected_mlkem_key_id) is None:
+                raise ValueError(
+                    "EXPECTED_MLKEM_KEY_ID must be a 64-character lowercase SHA-256 fingerprint"
+                )
 
     @classmethod
     def from_env(cls) -> GatewaySettings:
+        crypto_mode = os.getenv("CRYPTO_MODE", "rsa").strip().lower()
+        expected_key_id = os.getenv("EXPECTED_MLKEM_KEY_ID", "").strip().lower() or None
         return cls(
             cloud_url=os.getenv("CLOUD_URL", "http://localhost:8000").rstrip("/"),
             timeout_seconds=env_positive_float("HTTP_TIMEOUT_SECONDS", 5.0),
+            crypto_mode=crypto_mode,
+            expected_mlkem_key_id=expected_key_id,
         )
 
 

@@ -71,3 +71,21 @@
 **Prompt:** Create a reference document named `ML-KEM-Phase1.md` in the documentation folder that summarizes the work completed during the first phase of the ML-KEM migration.
 
 **Output:** Created a Phase 1 reference summarizing the migration objective, resulting system state, cloud-side ML-KEM implementation, strict versioned protocols, RSA migration control, persistent configuration, diagnostic logging, test and Docker verification evidence, observed limitations, and the requirements for the next gateway migration phase.
+
+## Task 13 - Implement the ML-KEM Gateway Migration Phase
+
+**Prompt:** Continue with Phase 2 of the staged ML-KEM migration by implementing the gateway-side changes for review before enabling them as the normal operating mode.
+
+**Output:** Added explicit RSA and ML-KEM gateway modes, mandatory ML-KEM public-key fingerprint pinning, startup capability validation, ML-KEM encapsulation, HKDF-SHA-256 key derivation, AES-256-GCM encryption, version 2 envelope creation, cryptographic readiness reporting, and fail-closed key-validation behavior. Preserved RSA as the default and prohibited automatic fallback after network or cryptographic failures. Added tests for ML-KEM and RSA delivery, missing or mismatched pins, substituted public keys, and network failures without downgrade. All 14 tests passed. Built the gateway image and completed an isolated Docker canary that stored a reading in the cloud with `security_mode="mlkem"` without switching the normal gateway from RSA mode.
+
+## Task 14 - Document ML-KEM Migration Phase 2
+
+**Prompt:** Create a reference document named `ML-KEM-Phase2.md` in the documentation folder that summarizes the work completed during the second phase of the ML-KEM migration.
+
+**Output:** Created a Phase 2 reference covering the gateway migration objective, explicit RSA and ML-KEM modes, public-key fingerprint pinning, ML-KEM envelope creation, fail-closed and no-downgrade behavior, diagnostic logging, automated test results, isolated Docker canary evidence, activation instructions, remaining limitations, and the next migration checkpoint.
+
+## Task 15 - Design Local Retry and Store-and-Forward Handling
+
+**Prompt:** Recommend a lightweight method for preventing sensor-reading loss during temporary cloud rejection, gateway restarts, or cryptographic mode transitions without introducing an external message broker such as RabbitMQ.
+
+**Output:** Recommended a durable SQLite outbox at the edge gateway. The gateway would persist each validated reading before acknowledging it, while a background worker forwards pending records using the explicitly configured cryptographic mode and retries failures with bounded exponential backoff. Duplicate cloud responses would be treated idempotently through the existing message identifier. Also recommended a small sensor-side retry for temporary gateway unavailability, persistent Docker volumes, queue status visibility, capacity limits, and tests for restart recovery, HTTP 403 responses, network failures, duplicates, and successful draining after returning to ML-KEM.

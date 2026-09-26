@@ -10,7 +10,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - cloud-data:/app/data
+      - ./data:/app/data
     healthcheck:
       test:
         [
@@ -29,6 +29,8 @@ services:
     command: uvicorn temperature_pqc.services.gateway:app --host 0.0.0.0 --port 8001
     environment:
       CLOUD_URL: http://cloud:8000
+      CRYPTO_MODE: ${CRYPTO_MODE:-rsa}
+      EXPECTED_MLKEM_KEY_ID: ${EXPECTED_MLKEM_KEY_ID:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8001:8001"
