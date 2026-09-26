@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 from temperature_pqc.models import TemperatureReading
@@ -27,10 +28,22 @@ class ReadingStore:
                     temperature_c REAL NOT NULL,
                     measured_at TEXT NOT NULL,
                     security_mode TEXT NOT NULL,
-                    received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    cloud_received_at TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(readings)").fetchall()
+            }
+            if "received_at" in columns and "cloud_received_at" not in columns:
+                connection.execute(
+                    "ALTER TABLE readings RENAME COLUMN received_at TO cloud_received_at"
+                )
+                LOGGER.info(
+                    "event=database_schema_migrated "
+                    "change=received_at_to_cloud_received_at"
+                )
         LOGGER.info("event=database_ready path=%s", self.database_path)
 
     def _connect(self) -> sqlite3.Connection:
@@ -52,8 +65,9 @@ class ReadingStore:
                 connection.execute(
                     """
                     INSERT INTO readings
-                        (message_id, sensor_id, temperature_c, measured_at, security_mode)
-                    VALUES (?, ?, ?, ?, ?)
+                        (message_id, sensor_id, temperature_c, measured_at,
+                         security_mode, cloud_received_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(reading.message_id),
@@ -61,6 +75,7 @@ class ReadingStore:
                         reading.temperature_c,
                         reading.measured_at.isoformat(),
                         security_mode,
+                        datetime.now(UTC).isoformat(),
                     ),
                 )
             LOGGER.info(
@@ -81,12 +96,27 @@ class ReadingStore:
             rows = connection.execute(
                 """
                 SELECT message_id, sensor_id, temperature_c, measured_at,
-                       security_mode, received_at
+                       security_mode, cloud_received_at
                 FROM readings
-                ORDER BY received_at DESC, rowid DESC
+                ORDER BY cloud_received_at DESC, rowid DESC
                 LIMIT ?
                 """,
                 (limit,),
             ).fetchall()
         LOGGER.info("event=readings_loaded count=%s limit=%s", len(rows), limit)
-        return [dict(row) for row in rows]
+        return [self._with_delivery_delay(dict(row)) for row in rows]
+
+    @staticmethod
+    def _with_delivery_delay(row: dict[str, object]) -> dict[str, object]:
+        measured_at = datetime.fromisoformat(str(row["measured_at"]))
+        cloud_received_at = datetime.fromisoformat(str(row["cloud_received_at"]))
+        if measured_at.tzinfo is None:
+            measured_at = measured_at.replace(tzinfo=UTC)
+        if cloud_received_at.tzinfo is None:
+            # Legacy SQLite CURRENT_TIMESTAMP values were stored as UTC without an offset.
+            cloud_received_at = cloud_received_at.replace(tzinfo=UTC)
+        row["delivery_delay_seconds"] = round(
+            (cloud_received_at - measured_at).total_seconds(),
+            3,
+        )
+        return row

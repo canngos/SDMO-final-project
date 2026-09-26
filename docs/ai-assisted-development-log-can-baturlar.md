@@ -89,3 +89,39 @@
 **Prompt:** Recommend a lightweight method for preventing sensor-reading loss during temporary cloud rejection, gateway restarts, or cryptographic mode transitions without introducing an external message broker such as RabbitMQ.
 
 **Output:** Recommended a durable SQLite outbox at the edge gateway. The gateway would persist each validated reading before acknowledging it, while a background worker forwards pending records using the explicitly configured cryptographic mode and retries failures with bounded exponential backoff. Duplicate cloud responses would be treated idempotently through the existing message identifier. Also recommended a small sensor-side retry for temporary gateway unavailability, persistent Docker volumes, queue status visibility, capacity limits, and tests for restart recovery, HTTP 403 responses, network failures, duplicates, and successful draining after returning to ML-KEM.
+
+## Task 16 - Implement Durable Store-and-Forward Delivery
+
+**Prompt:** Implement the approved lightweight retry solution so sensor readings are not lost during temporary cloud rejection, gateway recreation, or cryptographic mode transitions, without using an external message broker.
+
+**Output:** Added a persistent SQLite outbox to the gateway, asynchronous FIFO-oriented delivery, bounded exponential retry, queue capacity enforcement, restart recovery, duplicate-safe HTTP 409 handling, and an outbox status endpoint. Changed gateway ingestion to acknowledge readings only after durable local storage and updated the sensor to retry the same message identifier while the gateway is unavailable. Pending readings remain associated with the original data but are encrypted using only the explicitly configured gateway mode when delivered. Added a persistent gateway Docker volume and configuration controls. All 20 tests passed, both service images built successfully, and a live Docker test confirmed that a reading rejected in RSA mode with HTTP 403 survived gateway shutdown and was delivered with ML-KEM after recreation.
+
+## Task 17 - Clarify Store-Before-Forward Outbox Behavior
+
+**Prompt:** Explain why the gateway persists a sensor reading before receiving a successful cloud response instead of storing it only after a forwarding error occurs.
+
+**Output:** Explained that store-before-forward creates a durable handoff before the gateway acknowledges the sensor and eliminates the crash window between receiving a reading, detecting a cloud failure, and attempting to save it. The outbox entry is temporary and is deleted immediately after successful or duplicate-confirmed cloud delivery. Storing only after an error would reduce normal-path database writes but could still lose data if the gateway stopped before the failed reading was committed locally.
+
+## Task 18 - Diagnose Recovered Reading Timestamps
+
+**Prompt:** Investigate why multiple readings delivered from the retry outbox have the same cloud `received_at` value even though the sensor generates readings at approximately three-second intervals.
+
+**Output:** Confirmed that `measured_at` and `received_at` represent different events. The sensor-generated `measured_at` values retained their original spacing, while SQLite assigned `received_at` when the cloud rapidly inserted the recovered backlog. Fourteen inspected records preserved measurement times from 13:41:09 through 13:41:49 but were all delivered to the cloud during 13:41:50. Concluded that the data is correct, although the field naming and second-level display precision can be improved to prevent confusion.
+
+## Task 19 - Clarify Cloud Receipt and Delivery Delay Timestamps
+
+**Prompt:** Rename the cloud reading field `received_at` to `cloud_received_at` and add `delivery_delay_seconds` so recovered readings clearly distinguish sensor measurement time from cloud arrival time.
+
+**Output:** Added a backward-compatible SQLite schema migration that preserves existing timestamps while renaming the stored column to `cloud_received_at`. New cloud arrival timestamps are recorded in UTC with fractional-second precision, and each reading returned by the cloud API includes a calculated `delivery_delay_seconds` value based on `measured_at` and `cloud_received_at`. Updated the API documentation and added tests for legacy database migration, stored-row preservation, new timestamp precision, and delay calculation. All 22 automated tests passed.
+
+## Task 20 - Document and Verify ML-KEM Migration Phase 3
+
+**Prompt:** Create `ML-KEM-Phase3.md` to summarize the completed fallback, ML-KEM validation, and retry work, and perform a final project check before committing Phase 3.
+
+**Output:** Created the Phase 3 reference covering the final ML-KEM operating state, explicit operator-controlled RSA fallback, no-automatic-downgrade policy, durable gateway outbox, sensor retry behavior, timestamp semantics, tested recovery scenarios, operational settings, remaining limitations, and final verification evidence. Docker Compose validation passed, all 22 automated tests passed, all service images built, and a live enforced-ML-KEM check confirmed three healthy services, an empty outbox after delivery, and one matching cloud record with ML-KEM security and delivery timing fields.
+
+## Task 21 - Preserve Local Gateway Database Storage
+
+**Prompt:** Revert the gateway volume change because the local `data` folder is intentionally used to keep the database files directly accessible.
+
+**Output:** Restored the gateway bind mount to `./data:/app/data` and updated the README and Phase 3 documentation to describe the intentional local database storage accurately.

@@ -71,15 +71,20 @@ async def _forward_readings(application: FastAPI) -> None:
                     reading.message_id,
                     response.status_code,
                 )
+                await asyncio.sleep(settings.interval_seconds)
+                application.state.latest_reading = application.state.simulator.sample()
             except httpx.HTTPError as exc:
-                LOGGER.exception(
+                LOGGER.warning(
                     "event=sensor_forward_failed message_id=%s error_type=%s",
                     reading.message_id,
                     type(exc).__name__,
                 )
-
-            await asyncio.sleep(settings.interval_seconds)
-            application.state.latest_reading = application.state.simulator.sample()
+                LOGGER.info(
+                    "event=sensor_retry_scheduled message_id=%s delay_seconds=%s",
+                    reading.message_id,
+                    settings.retry_seconds,
+                )
+                await asyncio.sleep(settings.retry_seconds)
 
 
 def create_app(
