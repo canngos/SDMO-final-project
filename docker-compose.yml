@@ -4,11 +4,13 @@ services:
     command: uvicorn temperature_pqc.services.cloud:app --host 0.0.0.0 --port 8000
     environment:
       DATABASE_PATH: /app/data/readings.db
+      MLKEM_SEED_PATH: /app/data/mlkem-768.seed
+      ALLOW_RSA_INGEST: ${ALLOW_RSA_INGEST:-true}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
     volumes:
-      - cloud-data:/app/data
+      - ./data:/app/data
     healthcheck:
       test:
         [
@@ -27,9 +29,18 @@ services:
     command: uvicorn temperature_pqc.services.gateway:app --host 0.0.0.0 --port 8001
     environment:
       CLOUD_URL: http://cloud:8000
+      CRYPTO_MODE: ${CRYPTO_MODE:-rsa}
+      EXPECTED_MLKEM_KEY_ID: ${EXPECTED_MLKEM_KEY_ID:-}
+      GATEWAY_OUTBOX_PATH: /app/data/gateway-outbox.db
+      GATEWAY_OUTBOX_MAX_PENDING: ${GATEWAY_OUTBOX_MAX_PENDING:-1000}
+      GATEWAY_RETRY_INITIAL_SECONDS: ${GATEWAY_RETRY_INITIAL_SECONDS:-1}
+      GATEWAY_RETRY_MAX_SECONDS: ${GATEWAY_RETRY_MAX_SECONDS:-30}
+      GATEWAY_OUTBOX_POLL_SECONDS: ${GATEWAY_OUTBOX_POLL_SECONDS:-0.5}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8001:8001"
+    volumes:
+      - ./data:/app/data
     depends_on:
       cloud:
         condition: service_healthy
@@ -53,6 +64,7 @@ services:
       GATEWAY_URL: http://gateway:8001
       SENSOR_ID: ${SENSOR_ID:-sensor-01}
       SENSOR_INTERVAL_SECONDS: ${SENSOR_INTERVAL_SECONDS:-3}
+      SENSOR_RETRY_SECONDS: ${SENSOR_RETRY_SECONDS:-1}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8002:8002"
@@ -74,4 +86,6 @@ services:
       start_period: 5s
 
 volumes:
+  # for the cloud and gateway services to persist their data across container restarts.
   cloud-data:
+  gateway-data:
