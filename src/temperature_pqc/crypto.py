@@ -69,7 +69,7 @@ def encrypt_for_cloud(
 ) -> EncryptedEnvelope:
     public_key = serialization.load_pem_public_key(public_document.public_key_pem.encode("ascii"))
     if not isinstance(public_key, rsa.RSAPublicKey):
-        raise ValueError("cloud key is not RSA")
+        raise TypeError("cloud key is not RSA")
     aes_key = AESGCM.generate_key(bit_length=256)
     nonce = os.urandom(12)
     wrapped_key = public_key.encrypt(
