@@ -1,0 +1,56 @@
+name: Deployment Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/ahmed-deployment
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  compose-smoke-test:
+    runs-on: ubuntu-latest
+
+    env:
+      SENSOR_INTERVAL_SECONDS: "1"
+      SENSOR_RETRY_SECONDS: "1"
+      GATEWAY_OUTBOX_POLL_SECONDS: "0.5"
+      LOG_LEVEL: INFO
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare writable test data directory
+        run: |
+          mkdir -p data
+          chmod 777 data
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config
+
+      - name: Build Docker images
+        run: docker compose build
+
+      - name: Start test environment
+        run: docker compose up -d
+
+      - name: Verify deployed services
+        run: python scripts/deployment_smoke_test.py
+
+      - name: Show service status
+        if: always()
+        run: docker compose ps
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color cloud gateway sensor
+
+      - name: Stop and clean up test environment
+        if: always()
+        run: |
+          docker compose down --volumes --remove-orphans
+          sudo rm -rf data
