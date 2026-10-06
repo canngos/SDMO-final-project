@@ -64,6 +64,26 @@ The simulator sends one reading every three seconds. Useful endpoints:
 
 Stop the environment with `docker compose down`. Add `-v` only when you intentionally want to delete the stored readings.
 
+## Automated deployment test
+
+The repository now includes a separate GitHub Actions workflow for a Docker Compose deployment smoke test:
+
+- Workflow file: `.github/workflows/deployment-test.yml`
+- Local verification script: `scripts/deployment_smoke_test.py`
+- Detailed notes: [docs/deployment-test.md](docs/deployment-test.md)
+
+The workflow builds the Docker images, starts the cloud, gateway, and sensor services, waits for the health endpoints, verifies that one sensor reading reaches the cloud, prints logs if something fails, and then stops the temporary environment.
+
+Run the same check locally:
+
+```bash
+docker compose config
+docker compose build
+docker compose up -d
+python scripts/deployment_smoke_test.py
+docker compose down --volumes --remove-orphans
+```
+
 ## Local development
 
 Use Python 3.12 or newer.
@@ -106,7 +126,7 @@ The AI log deliberately marks human review as pending. Group members must run th
 - Classical RSA-2048 key transport is not post-quantum secure.
 - Sensor-to-gateway traffic is plaintext.
 - Test coverage is limited to a crypto round-trip and one validation rule.
-- CI has no linting, security scanning, coverage threshold, image build, or deployment.
+- The main CI workflow has no linting, security scanning, or coverage threshold yet. A separate deployment smoke-test workflow now covers Docker image build and temporary Docker Compose startup, but not production deployment.
 - Monitoring has no metrics, dashboards, alerts, or readiness checks.
 - Cloud RSA keys are regenerated whenever the process restarts.
 - The gateway does not authenticate the public-key response.

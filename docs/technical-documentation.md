@@ -41,6 +41,35 @@ Cloud:
 - Automated tests cover only two small cases.
 - CI only installs dependencies and runs tests.
 - Logs are plain console messages and there are no metrics, dashboards, alerts, or readiness checks.
-- The containerized environment is a local test setup, not an automated deployment pipeline.
+- The original containerized environment was only a local test setup. A separate automated Docker Compose smoke-test workflow now verifies image build, startup, health endpoints, and one end-to-end reading, but this is still not a production deployment.
 
 These limitations are intentional starting conditions, not claims about a completed solution. The group should critically evaluate the implementation, discover additional issues, and record accepted, modified, and rejected AI output.
+
+## Automated deployment test
+
+Ahmed's deployment contribution adds a separate Docker Compose deployment workflow in `.github/workflows/deployment-test.yml`. It intentionally avoids modifying the main CI workflow because another branch is improving CI quality checks there.
+
+The deployment workflow:
+
+1. Checks out the repository in GitHub Actions.
+2. Prepares a writable test `data` directory for the non-root containers.
+3. Runs `docker compose config`.
+4. Builds the cloud, gateway, and sensor images.
+5. Starts the existing Docker Compose stack.
+6. Runs `scripts/deployment_smoke_test.py`.
+7. Checks the existing health endpoints.
+8. Captures a sensor `message_id` and waits for that exact reading to appear in the cloud API.
+9. Shows service status and failure logs.
+10. Stops and cleans up the temporary environment.
+
+This satisfies the course operations requirement at the educational test-environment level: automated build, automated startup, health checks, logs on failure, and end-to-end delivery verification. It does not create a production deployment platform.
+
+Verification on 2026-10-06:
+
+- 23 automated Python tests passed with one non-blocking Starlette deprecation warning.
+- Docker Compose configuration validation passed.
+- Docker image build passed.
+- The Compose environment started successfully.
+- Cloud, gateway, and sensor containers were healthy.
+- The smoke test confirmed one sensor reading reached cloud storage.
+- The local test environment was stopped afterward.
