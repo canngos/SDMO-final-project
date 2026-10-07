@@ -28,33 +28,63 @@ class TemperatureSimulator:
     def sample(self) -> TemperatureReading:
         drifted = self.temperature + random.gauss(0.0, 0.25)
         self.temperature = round(min(35.0, max(10.0, drifted)), 2)
-        return TemperatureReading(
+        reading = TemperatureReading(
             sensor_id=self.sensor_id,
             temperature_c=self.temperature,
             measured_at=datetime.now(UTC),
         )
+        LOGGER.info(
+            "event=reading_sampled message_id=%s sensor_id=%s",
+            reading.message_id,
+            reading.sensor_id,
+        )
+        return reading
 
 
 async def _forward_readings(application: FastAPI) -> None:
     settings: SensorSettings = application.state.settings
+    LOGGER.info(
+        "event=sensor_forwarder_started sensor_id=%s gateway_url=%s interval_seconds=%s",
+        settings.sensor_id,
+        settings.gateway_url,
+        settings.interval_seconds,
+    )
     async with httpx.AsyncClient(
         transport=application.state.transport,
         timeout=settings.timeout_seconds,
     ) as client:
         while True:
             reading: TemperatureReading = application.state.latest_reading
+            LOGGER.info(
+                "event=sensor_forward_attempt message_id=%s gateway_url=%s",
+                reading.message_id,
+                settings.gateway_url,
+            )
             try:
                 response = await client.post(
                     f"{settings.gateway_url}/v1/readings",
                     json=reading.model_dump(mode="json"),
                 )
                 response.raise_for_status()
-                LOGGER.info("sent reading %s", reading.message_id)
-            except httpx.HTTPError:
-                LOGGER.exception("failed to send reading %s", reading.message_id)
-
-            await asyncio.sleep(settings.interval_seconds)
-            application.state.latest_reading = application.state.simulator.sample()
+                LOGGER.info(
+                    "event=sensor_forward_succeeded message_id=%s status_code=%s",
+                    reading.message_id,
+                    response.status_code,
+                )
+                await asyncio.sleep(settings.interval_seconds)
+                application.state.latest_reading = application.state.simulator.sample()
+            except httpx.HTTPError as exc:
+                LOGGER.warning(
+                    "event=sensor_forward_failed message_id=%s error_type=%s",
+                    reading.message_id,
+                    type(exc).__name__,
+                )
+                LOGGER.info(
+                    "event=sensor_retry_scheduled message_id=%s delay_seconds=%s",
+                    reading.message_id,
+                    settings.retry_seconds,
+                )
+                await asyncio.sleep(settings.retry_seconds)
 
 
 def create_app(
@@ -67,11 +97,17 @@ def create_app(
     @asynccontextmanager
     async def lifespan(application: FastAPI):
         application.state.latest_reading = simulator.sample()
+        LOGGER.info(
+            "event=sensor_started sensor_id=%s gateway_url=%s",
+            resolved.sensor_id,
+            resolved.gateway_url,
+        )
         forward_task = asyncio.create_task(_forward_readings(application))
         yield
         forward_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await forward_task
+        LOGGER.info("event=sensor_stopped sensor_id=%s", resolved.sensor_id)
 
     application = FastAPI(
         title="Simulated Temperature Sensor",

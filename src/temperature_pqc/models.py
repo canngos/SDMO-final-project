@@ -6,7 +6,16 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+RSA_ALGORITHM = "RSA-OAEP-2048+AES-256-GCM"
+MLKEM_ALGORITHM = "ML-KEM-768+HKDF-SHA256+AES-256-GCM"
+
+KeyId = Annotated[str, Field(min_length=16, max_length=64, pattern=r"^[a-f0-9]+$")]
+Base64Value = Annotated[
+    str,
+    Field(min_length=4, max_length=8192, pattern=r"^[A-Za-z0-9+/]*={0,2}$"),
+]
 
 
 class TemperatureReading(BaseModel):
@@ -23,24 +32,59 @@ class TemperatureReading(BaseModel):
         return value.astimezone(UTC)
 
 
-class PublicKeyDocument(BaseModel):
+class RsaPublicKeyDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version: Literal[1] = 1
     alg: Literal["RSA-OAEP-2048"] = "RSA-OAEP-2048"
-    key_id: Annotated[str, Field(min_length=16, max_length=64)]
+    key_id: KeyId
     public_key_pem: str
 
 
-class EncryptedEnvelope(BaseModel):
+class MlKemPublicKeyDocument(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[2] = 2
+    alg: Literal["ML-KEM-768"] = "ML-KEM-768"
+    key_id: KeyId
+    public_key_b64: Base64Value
+
+
+class RsaEncryptedEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     version: Literal[1] = 1
-    alg: Literal["RSA-OAEP-2048+AES-256-GCM"] = "RSA-OAEP-2048+AES-256-GCM"
-    key_id: Annotated[str, Field(min_length=16, max_length=64)]
+    alg: Literal["RSA-OAEP-2048+AES-256-GCM"] = RSA_ALGORITHM
+    key_id: KeyId
     message_id: UUID
-    wrapped_key: str
-    nonce: str
-    ciphertext: str
+    wrapped_key: Base64Value
+    nonce: Base64Value
+    ciphertext: Base64Value
+
+
+class MlKemEncryptedEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[2] = 2
+    alg: Literal["ML-KEM-768+HKDF-SHA256+AES-256-GCM"] = MLKEM_ALGORITHM
+    key_id: KeyId
+    message_id: UUID
+    kem_ciphertext: Base64Value
+    nonce: Base64Value
+    ciphertext: Base64Value
+
+
+IngestEnvelope = Annotated[
+    RsaEncryptedEnvelope | MlKemEncryptedEnvelope,
+    Field(discriminator="alg"),
+]
+
+# Compatibility aliases keep the stage-one gateway unchanged.
+PublicKeyDocument = RsaPublicKeyDocument
+EncryptedEnvelope = RsaEncryptedEnvelope
 
 
 class StoreResult(BaseModel):
     status: Literal["stored"] = "stored"
     message_id: UUID
-    security_mode: Literal["rsa"] = "rsa"
+    security_mode: Literal["rsa", "mlkem"]

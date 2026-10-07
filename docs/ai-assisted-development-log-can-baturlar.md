@@ -41,3 +41,87 @@
 **Prompt:** Diagnose and resolve the gateway's `httpx.ConnectError: [Errno -2] Name or service not known` error while forwarding sensor readings to the cloud service.
 
 **Output:** Identified that the running cloud container was detached from the Docker Compose network, preventing the gateway from resolving the `cloud` hostname. Rebuilt and recreated the stack, verified Docker DNS resolution, and confirmed end-to-end sensor delivery. Added Compose health checks and dependency conditions so the gateway waits for a healthy cloud and the sensor waits for a healthy gateway during future startups.
+
+## Task 8 - Plan the ML-KEM Migration and Fallback
+
+**Prompt:** Prepare an implementation plan for integrating ML-KEM into the existing gateway-to-cloud communication path, including staged migration, compatibility, testing, operational rollout, and secure fallback scenarios. Do not implement the plan until it has been reviewed and approved.
+
+**Output:** Created a reviewable ML-KEM migration plan proposing ML-KEM-768, versioned RSA and ML-KEM envelopes, cloud-side dual-protocol acceptance, explicit gateway algorithm modes, pinned ML-KEM key identity, persistent cloud keys, downgrade-resistant manual fallback, staged rollout gates, a compatibility and failure matrix, required tests, rollback steps, and report evidence. No application code was changed as part of this planning task.
+
+## Task 9 - Evaluate Dual-Format Acceptance
+
+**Prompt:** Explain why the migration design allows the cloud service to accept both the existing RSA envelope and the new ML-KEM envelope, and evaluate the advantages, disadvantages, and necessary security controls of this approach.
+
+**Output:** Explained that temporary dual-format acceptance supports staged deployment, service continuity, compatibility testing, and controlled rollback when gateways cannot all be upgraded simultaneously. Identified the main disadvantages as a larger attack surface, downgrade risk, increased implementation and testing complexity, operational ambiguity, and delayed retirement of RSA. Recommended explicit version and algorithm identifiers, strict schema separation, gateway-side algorithm configuration, prohibition of automatic fallback, RSA usage monitoring, a cloud-side disable switch, and a defined retirement deadline.
+
+## Task 10 - Implement the Dual-Protocol Cloud Migration Stage
+
+**Prompt:** Begin the staged ML-KEM migration by updating only the cloud server. Preserve compatibility with the existing RSA gateway so the cloud-side changes can be reviewed before modifying the gateway.
+
+**Output:** Upgraded the cloud to support strict versioned RSA and ML-KEM-768 envelopes, added an ML-KEM public-key endpoint, implemented ML-KEM decapsulation with HKDF-SHA-256 and AES-256-GCM authentication, persisted the ML-KEM seed in the cloud data volume with restricted permissions, added an explicit RSA-ingestion policy flag, and recorded the selected security mode with each reading. Added cloud migration tests covering RSA compatibility, valid ML-KEM ingestion, key persistence, RSA disablement, strict algorithm validation, and ciphertext tampering. All eight tests passed. Rebuilt and deployed only the cloud container, verified that the ML-KEM key identity survived a restart, and confirmed that the unchanged gateway and running sensor continued delivering readings through RSA.
+
+## Task 11 - Add End-to-End Diagnostic Logging
+
+**Prompt:** Add informative application logs that make it easier to follow and debug the complete sensor-to-gateway-to-cloud flow after redeployment.
+
+**Output:** Added searchable, correlation-friendly log events across sensor sampling and forwarding, gateway receipt and cloud forwarding, RSA and ML-KEM cryptographic operations, cloud protocol selection and validation, and database persistence. Each stage carries the reading `message_id` and relevant public metadata such as algorithm, security mode, status code, and key identifier. Sensitive plaintext, private keys, shared secrets, and derived encryption keys are not logged. Documented the Docker log-following command and verified the changes with eight passing tests and successful gateway and sensor service imports.
+
+## Task 12 - Document ML-KEM Migration Phase 1
+
+**Prompt:** Create a reference document named `ML-KEM-Phase1.md` in the documentation folder that summarizes the work completed during the first phase of the ML-KEM migration.
+
+**Output:** Created a Phase 1 reference summarizing the migration objective, resulting system state, cloud-side ML-KEM implementation, strict versioned protocols, RSA migration control, persistent configuration, diagnostic logging, test and Docker verification evidence, observed limitations, and the requirements for the next gateway migration phase.
+
+## Task 13 - Implement the ML-KEM Gateway Migration Phase
+
+**Prompt:** Continue with Phase 2 of the staged ML-KEM migration by implementing the gateway-side changes for review before enabling them as the normal operating mode.
+
+**Output:** Added explicit RSA and ML-KEM gateway modes, mandatory ML-KEM public-key fingerprint pinning, startup capability validation, ML-KEM encapsulation, HKDF-SHA-256 key derivation, AES-256-GCM encryption, version 2 envelope creation, cryptographic readiness reporting, and fail-closed key-validation behavior. Preserved RSA as the default and prohibited automatic fallback after network or cryptographic failures. Added tests for ML-KEM and RSA delivery, missing or mismatched pins, substituted public keys, and network failures without downgrade. All 14 tests passed. Built the gateway image and completed an isolated Docker canary that stored a reading in the cloud with `security_mode="mlkem"` without switching the normal gateway from RSA mode.
+
+## Task 14 - Document ML-KEM Migration Phase 2
+
+**Prompt:** Create a reference document named `ML-KEM-Phase2.md` in the documentation folder that summarizes the work completed during the second phase of the ML-KEM migration.
+
+**Output:** Created a Phase 2 reference covering the gateway migration objective, explicit RSA and ML-KEM modes, public-key fingerprint pinning, ML-KEM envelope creation, fail-closed and no-downgrade behavior, diagnostic logging, automated test results, isolated Docker canary evidence, activation instructions, remaining limitations, and the next migration checkpoint.
+
+## Task 15 - Design Local Retry and Store-and-Forward Handling
+
+**Prompt:** Recommend a lightweight method for preventing sensor-reading loss during temporary cloud rejection, gateway restarts, or cryptographic mode transitions without introducing an external message broker such as RabbitMQ.
+
+**Output:** Recommended a durable SQLite outbox at the edge gateway. The gateway would persist each validated reading before acknowledging it, while a background worker forwards pending records using the explicitly configured cryptographic mode and retries failures with bounded exponential backoff. Duplicate cloud responses would be treated idempotently through the existing message identifier. Also recommended a small sensor-side retry for temporary gateway unavailability, persistent Docker volumes, queue status visibility, capacity limits, and tests for restart recovery, HTTP 403 responses, network failures, duplicates, and successful draining after returning to ML-KEM.
+
+## Task 16 - Implement Durable Store-and-Forward Delivery
+
+**Prompt:** Implement the approved lightweight retry solution so sensor readings are not lost during temporary cloud rejection, gateway recreation, or cryptographic mode transitions, without using an external message broker.
+
+**Output:** Added a persistent SQLite outbox to the gateway, asynchronous FIFO-oriented delivery, bounded exponential retry, queue capacity enforcement, restart recovery, duplicate-safe HTTP 409 handling, and an outbox status endpoint. Changed gateway ingestion to acknowledge readings only after durable local storage and updated the sensor to retry the same message identifier while the gateway is unavailable. Pending readings remain associated with the original data but are encrypted using only the explicitly configured gateway mode when delivered. Added a persistent gateway Docker volume and configuration controls. All 20 tests passed, both service images built successfully, and a live Docker test confirmed that a reading rejected in RSA mode with HTTP 403 survived gateway shutdown and was delivered with ML-KEM after recreation.
+
+## Task 17 - Clarify Store-Before-Forward Outbox Behavior
+
+**Prompt:** Explain why the gateway persists a sensor reading before receiving a successful cloud response instead of storing it only after a forwarding error occurs.
+
+**Output:** Explained that store-before-forward creates a durable handoff before the gateway acknowledges the sensor and eliminates the crash window between receiving a reading, detecting a cloud failure, and attempting to save it. The outbox entry is temporary and is deleted immediately after successful or duplicate-confirmed cloud delivery. Storing only after an error would reduce normal-path database writes but could still lose data if the gateway stopped before the failed reading was committed locally.
+
+## Task 18 - Diagnose Recovered Reading Timestamps
+
+**Prompt:** Investigate why multiple readings delivered from the retry outbox have the same cloud `received_at` value even though the sensor generates readings at approximately three-second intervals.
+
+**Output:** Confirmed that `measured_at` and `received_at` represent different events. The sensor-generated `measured_at` values retained their original spacing, while SQLite assigned `received_at` when the cloud rapidly inserted the recovered backlog. Fourteen inspected records preserved measurement times from 13:41:09 through 13:41:49 but were all delivered to the cloud during 13:41:50. Concluded that the data is correct, although the field naming and second-level display precision can be improved to prevent confusion.
+
+## Task 19 - Clarify Cloud Receipt and Delivery Delay Timestamps
+
+**Prompt:** Rename the cloud reading field `received_at` to `cloud_received_at` and add `delivery_delay_seconds` so recovered readings clearly distinguish sensor measurement time from cloud arrival time.
+
+**Output:** Added a backward-compatible SQLite schema migration that preserves existing timestamps while renaming the stored column to `cloud_received_at`. New cloud arrival timestamps are recorded in UTC with fractional-second precision, and each reading returned by the cloud API includes a calculated `delivery_delay_seconds` value based on `measured_at` and `cloud_received_at`. Updated the API documentation and added tests for legacy database migration, stored-row preservation, new timestamp precision, and delay calculation. All 22 automated tests passed.
+
+## Task 20 - Document and Verify ML-KEM Migration Phase 3
+
+**Prompt:** Create `ML-KEM-Phase3.md` to summarize the completed fallback, ML-KEM validation, and retry work, and perform a final project check before committing Phase 3.
+
+**Output:** Created the Phase 3 reference covering the final ML-KEM operating state, explicit operator-controlled RSA fallback, no-automatic-downgrade policy, durable gateway outbox, sensor retry behavior, timestamp semantics, tested recovery scenarios, operational settings, remaining limitations, and final verification evidence. Docker Compose validation passed, all 22 automated tests passed, all service images built, and a live enforced-ML-KEM check confirmed three healthy services, an empty outbox after delivery, and one matching cloud record with ML-KEM security and delivery timing fields.
+
+## Task 21 - Preserve Local Gateway Database Storage
+
+**Prompt:** Revert the gateway volume change because the local `data` folder is intentionally used to keep the database files directly accessible.
+
+**Output:** Restored the gateway bind mount to `./data:/app/data` and updated the README and Phase 3 documentation to describe the intentional local database storage accurately.
