@@ -59,6 +59,23 @@ class ReadingStore:
         except sqlite3.Error:
             return False
 
+    def metrics(self) -> dict[str, int]:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    COUNT(*) AS readings_stored,
+                    SUM(CASE WHEN security_mode = 'rsa' THEN 1 ELSE 0 END) AS rsa,
+                    SUM(CASE WHEN security_mode = 'mlkem' THEN 1 ELSE 0 END) AS mlkem
+                FROM readings
+                """
+            ).fetchone()
+        return {
+            "readings_stored_current": int(row["readings_stored"] or 0),
+            "rsa_readings_stored_current": int(row["rsa"] or 0),
+            "mlkem_readings_stored_current": int(row["mlkem"] or 0),
+        }
+
     def insert(self, reading: TemperatureReading, security_mode: str = "rsa") -> bool:
         try:
             with self._connect() as connection:

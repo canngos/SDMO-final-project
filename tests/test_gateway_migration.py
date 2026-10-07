@@ -125,10 +125,12 @@ def test_key_pin_mismatch_stays_queued_without_rsa_fallback(tmp_path) -> None:
     with TestClient(app) as client:
         response = client.post("/v1/readings", json=_reading().model_dump(mode="json"))
         _wait_until(lambda: len(requested_paths) == 1)
-        _wait_until(lambda: client.get("/health").status_code == 503)
+        _wait_until(lambda: client.get("/ready").status_code == 503)
+        health = client.get("/health")
         outbox_status = client.get("/v1/outbox/status").json()
 
     assert response.status_code == 202
+    assert health.status_code == 200
     assert outbox_status["pending"] == 1
     assert outbox_status["total_retries"] == 1
     assert requested_paths == ["/v2/crypto/public-key"]
