@@ -10,7 +10,6 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-
 TIMEOUT_SECONDS = float(os.getenv("DEPLOYMENT_TEST_TIMEOUT_SECONDS", "90"))
 POLL_SECONDS = float(os.getenv("DEPLOYMENT_TEST_POLL_SECONDS", "2"))
 
@@ -83,7 +82,7 @@ def main() -> int:
             f"crypto_mode={gateway_health.get('crypto_mode')} "
             f"outbox_pending={outbox.get('pending')}"
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"deployment smoke test failed: {exc}", file=sys.stderr)
         return 1
     return 0

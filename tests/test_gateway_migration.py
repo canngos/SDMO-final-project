@@ -219,7 +219,7 @@ def test_pending_rsa_reading_drains_with_mlkem_after_gateway_restart(tmp_path) -
         transport=httpx.MockTransport(rsa_rejected),
     )
     with TestClient(rsa_app) as client:
-        response = client.post("/v1/readings", json=reading.model_dump(mode="json"))
+        client.post("/v1/readings", json=reading.model_dump(mode="json"))
         _wait_until(
             lambda: client.get("/v1/outbox/status").json()["total_retries"] == 1
         )
