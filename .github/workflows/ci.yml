@@ -2,22 +2,42 @@ name: CI
 
 on:
   push:
+    branches: [master]
   pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  test:
+  quality:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-      - name: Install
-        run: python -m pip install -e ".[dev]"
-      - name: Test
-        run: pytest
-      # TODO: add linting, coverage, security scans, container build, and deployment.
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Tests with coverage
+        run: |
+          python -m pytest \
+            --cov=temperature_pqc \
+            --cov-report=term-missing
+
+      - name: Dependency security audit
+        run: python -m pip_audit
+
+      - name: Build Docker images
+        run: docker compose build

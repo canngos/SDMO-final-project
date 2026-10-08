@@ -10,7 +10,6 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-
 TIMEOUT_SECONDS = float(os.getenv("DEPLOYMENT_TEST_TIMEOUT_SECONDS", "90"))
 POLL_SECONDS = float(os.getenv("DEPLOYMENT_TEST_POLL_SECONDS", "2"))
 
@@ -118,7 +117,7 @@ def main() -> int:
             f"gateway_successes={gateway_metrics.get('cloud_delivery_successes_total')} "
             f"sensor_successes={sensor_metrics.get('gateway_send_successes_total')}"
         )
-    except Exception as exc:
+    except (RuntimeError, KeyError) as exc: 
         print(f"deployment smoke test failed: {exc}", file=sys.stderr)
         return 1
     return 0
