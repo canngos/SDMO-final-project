@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 
 import httpx
@@ -67,6 +68,79 @@ def test_cloud_readiness_metrics_and_monitoring(tmp_path) -> None:
     assert not_ready.json()["checks"]["database_accessible"] is False
 
 
+def test_cloud_malformed_envelopes_trigger_warning_and_valid_delivery_clears_it(
+    tmp_path, caplog
+) -> None:
+    settings = CloudSettings(
+        database_path=str(tmp_path / "readings.db"),
+        mlkem_seed_path=str(tmp_path / "mlkem-768.seed"),
+        validation_failure_warning_threshold=3,
+    )
+    app = create_cloud_app(settings)
+    caplog.set_level(logging.WARNING, logger="temperature_pqc.cloud")
+
+    with TestClient(app) as client:
+        bodies = [{}, {"private_marker": "malformed-body-marker"}, {}]
+        for count, body in enumerate(bodies, start=1):
+            response = client.post("/v1/readings", json=body)
+
+            assert response.status_code == 422
+            assert set(response.json()) == {"detail"}
+            assert response.json()["detail"][0]["loc"] == ["body"]
+            metrics = client.get("/metrics").json()
+            assert metrics["envelopes_received_total"] == count
+            assert metrics["validation_failures_total"] == count
+            assert app.state.consecutive_validation_failures == count
+            monitoring = client.get("/monitoring").json()
+            if count < settings.validation_failure_warning_threshold:
+                assert monitoring == {"status": "ok", "warnings": []}
+            else:
+                assert monitoring["status"] == "warning"
+                assert monitoring["warnings"][0]["code"] == "repeated_validation_failures"
+
+        assert "private_marker" not in caplog.text
+        assert "malformed-body-marker" not in caplog.text
+        assert caplog.text.count("reason=request_validation_failed") == len(bodies)
+
+        reading = _reading()
+        document = PublicKeyDocument.model_validate(
+            client.get("/v1/crypto/public-key").json()
+        )
+        envelope = encrypt_for_cloud(
+            document, reading.message_id, reading.model_dump_json().encode("utf-8")
+        )
+        response = client.post("/v1/readings", json=envelope.model_dump(mode="json"))
+
+        assert response.status_code == 200
+        metrics = client.get("/metrics").json()
+        assert metrics["envelopes_received_total"] == len(bodies) + 1
+        assert metrics["validation_failures_total"] == len(bodies)
+        assert metrics["readings_persisted_total"] == 1
+        assert app.state.consecutive_validation_failures == 0
+        assert client.get("/monitoring").json() == {"status": "ok", "warnings": []}
+
+
+def test_cloud_query_validation_error_does_not_count_as_invalid_envelope(tmp_path) -> None:
+    settings = CloudSettings(
+        database_path=str(tmp_path / "readings.db"),
+        mlkem_seed_path=str(tmp_path / "mlkem-768.seed"),
+        validation_failure_warning_threshold=1,
+    )
+    app = create_cloud_app(settings)
+
+    with TestClient(app) as client:
+        response = client.get("/v1/readings?limit=0")
+
+        assert response.status_code == 422
+        assert set(response.json()) == {"detail"}
+        assert response.json()["detail"][0]["loc"] == ["query", "limit"]
+        metrics = client.get("/metrics").json()
+        assert metrics["envelopes_received_total"] == 0
+        assert metrics["validation_failures_total"] == 0
+        assert app.state.consecutive_validation_failures == 0
+        assert client.get("/monitoring").json() == {"status": "ok", "warnings": []}
+
+
 def test_gateway_readiness_metrics_and_monitoring_show_outbox_pressure(tmp_path) -> None:
     cloud_key = LegacyCloudKeyPair()
 
@@ -104,6 +178,8 @@ def test_gateway_readiness_metrics_and_monitoring_show_outbox_pressure(tmp_path)
     assert metrics["readings_accepted_total"] == 1
     assert metrics["cloud_delivery_failures_total"] == 1
     assert metrics["outbox_pending"] == 1
+    assert metrics["crypto_ready"] is True
+    assert "crypto_not_ready_total" not in metrics
     assert "temperature_c" not in json.dumps(metrics)
     assert {warning["code"] for warning in monitoring["warnings"]} >= {
         "service_not_ready",

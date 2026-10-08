@@ -10,6 +10,8 @@ from typing import Annotated
 
 from cryptography.exceptions import InvalidTag
 from fastapi import FastAPI, HTTPException, Query, Request, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
@@ -63,6 +65,17 @@ def create_app(settings: CloudSettings | None = None) -> FastAPI:
     application.state.settings = resolved
     application.state.metrics = metrics
     application.state.consecutive_validation_failures = 0
+
+    @application.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        if request.method == "POST" and request.url.path == "/v1/readings":
+            request.app.state.metrics.increment("envelopes_received_total")
+            request.app.state.metrics.increment("validation_failures_total")
+            request.app.state.consecutive_validation_failures += 1
+            LOGGER.warning("event=cloud_envelope_rejected reason=request_validation_failed")
+        return await request_validation_exception_handler(request, exc)
 
     @application.get("/health")
     async def health() -> dict[str, str]:

@@ -327,8 +327,6 @@ def create_app(
         payload["crypto_mode"] = resolved.crypto_mode
         payload["crypto_ready"] = bool(application.state.crypto_ready)
         payload["outbox_capacity"] = resolved.outbox_max_pending
-        if not application.state.crypto_ready:
-            payload["crypto_not_ready_total"] = 1
         try:
             outbox_status = await asyncio.to_thread(outbox.status)
         except sqlite3.Error:
