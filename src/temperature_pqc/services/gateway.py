@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from temperature_pqc.config import GatewaySettings
@@ -25,6 +26,7 @@ from temperature_pqc.models import (
     PublicKeyDocument,
     TemperatureReading,
 )
+from temperature_pqc.observability import MetricsRegistry, monitoring_payload
 from temperature_pqc.outbox import GatewayOutbox, OutboxFullError, PendingReading
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -176,6 +178,9 @@ async def _outbox_worker(application: FastAPI) -> None:
                 )
             except MlKemPublicKeyError as exc:
                 application.state.crypto_ready = False
+                application.state.metrics.increment("cloud_delivery_failures_total")
+                application.state.metrics.increment("crypto_key_failures_total")
+                application.state.consecutive_delivery_failures += 1
                 LOGGER.critical(
                     "event=mlkem_key_validation_failed message_id=%s error_type=%s",
                     pending.reading.message_id,
@@ -183,6 +188,8 @@ async def _outbox_worker(application: FastAPI) -> None:
                 )
                 await _schedule_retry(application, pending, exc)
             except (httpx.HTTPError, ValueError) as exc:
+                application.state.metrics.increment("cloud_delivery_failures_total")
+                application.state.consecutive_delivery_failures += 1
                 LOGGER.warning(
                     "event=gateway_forward_failed message_id=%s error_category=%s",
                     pending.reading.message_id,
@@ -191,6 +198,7 @@ async def _outbox_worker(application: FastAPI) -> None:
                 await _schedule_retry(application, pending, exc)
             else:
                 application.state.crypto_ready = True
+                application.state.consecutive_delivery_failures = 0
                 try:
                     await asyncio.to_thread(
                         outbox.mark_delivered,
@@ -203,6 +211,9 @@ async def _outbox_worker(application: FastAPI) -> None:
                     )
                     await asyncio.sleep(settings.outbox_poll_seconds)
                     continue
+                application.state.metrics.increment("cloud_delivery_successes_total")
+                if cloud_response.status_code == status.HTTP_409_CONFLICT:
+                    application.state.metrics.increment("duplicate_deliveries_total")
                 LOGGER.info(
                     "event=delivery_succeeded message_id=%s status_code=%s "
                     "crypto_mode=%s",
@@ -220,6 +231,17 @@ def create_app(
     outbox = GatewayOutbox(
         resolved.outbox_database_path,
         resolved.outbox_max_pending,
+    )
+    metrics = MetricsRegistry(
+        [
+            "readings_received_total",
+            "readings_accepted_total",
+            "readings_rejected_total",
+            "cloud_delivery_successes_total",
+            "cloud_delivery_failures_total",
+            "duplicate_deliveries_total",
+            "crypto_key_failures_total",
+        ]
     )
 
     @asynccontextmanager
@@ -251,20 +273,107 @@ def create_app(
     application.state.transport = transport
     application.state.outbox = outbox
     application.state.crypto_ready = resolved.crypto_mode == "rsa"
+    application.state.metrics = metrics
+    application.state.consecutive_delivery_failures = 0
 
     @application.get("/health")
-    async def health() -> dict[str, str | int]:
-        if not application.state.crypto_ready:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="gateway cryptographic configuration is not ready",
-            )
-        outbox_status = await asyncio.to_thread(outbox.status)
+    async def health() -> dict[str, str | bool]:
         return {
             "status": "ok",
             "crypto_mode": resolved.crypto_mode,
-            "outbox_pending": int(outbox_status["pending"]),
+            "crypto_ready": bool(application.state.crypto_ready),
         }
+
+    async def readiness_payload() -> tuple[int, dict[str, object]]:
+        checks: dict[str, bool] = {
+            "configuration_loaded": True,
+            "crypto_ready": bool(application.state.crypto_ready),
+            "outbox_accessible": True,
+            "outbox_has_capacity": True,
+        }
+        outbox_status: dict[str, int | float | None] | None = None
+        try:
+            outbox_status = await asyncio.to_thread(outbox.status)
+        except sqlite3.Error:
+            checks["outbox_accessible"] = False
+            outbox_status = None
+        else:
+            checks["outbox_has_capacity"] = (
+                int(outbox_status["pending"]) < resolved.outbox_max_pending
+            )
+        ready = all(checks.values())
+        payload: dict[str, object] = {
+            "status": "ready" if ready else "not_ready",
+            "checks": checks,
+            "crypto_mode": resolved.crypto_mode,
+        }
+        if outbox_status is not None:
+            payload["outbox"] = outbox_status
+        return (
+            status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+            payload,
+        )
+
+    @application.get("/ready")
+    async def ready() -> JSONResponse:
+        status_code, payload = await readiness_payload()
+        if status_code != status.HTTP_200_OK:
+            LOGGER.warning("event=gateway_readiness_failed checks=%s", payload["checks"])
+        return JSONResponse(status_code=status_code, content=payload)
+
+    @application.get("/metrics")
+    async def service_metrics() -> dict[str, object]:
+        payload = application.state.metrics.snapshot()
+        payload["crypto_mode"] = resolved.crypto_mode
+        payload["crypto_ready"] = bool(application.state.crypto_ready)
+        payload["outbox_capacity"] = resolved.outbox_max_pending
+        try:
+            outbox_status = await asyncio.to_thread(outbox.status)
+        except sqlite3.Error:
+            LOGGER.exception("event=gateway_metrics_outbox_failed")
+            payload["outbox_metrics_available"] = False
+        else:
+            payload["outbox_metrics_available"] = True
+            payload["outbox_pending"] = int(outbox_status["pending"])
+            payload["outbox_oldest_pending_seconds"] = outbox_status[
+                "oldest_pending_seconds"
+            ]
+            payload["outbox_retry_attempts_total"] = int(outbox_status["total_retries"])
+        return payload
+
+    @application.get("/monitoring")
+    async def monitoring() -> dict[str, object]:
+        ready_status, payload = await readiness_payload()
+        warnings: list[dict[str, str]] = []
+        if ready_status != status.HTTP_200_OK:
+            warnings.append(
+                {
+                    "code": "service_not_ready",
+                    "severity": "warning",
+                    "message": "gateway readiness checks are failing",
+                }
+            )
+        outbox_status = payload.get("outbox")
+        if isinstance(outbox_status, dict) and int(outbox_status["pending"]) >= resolved.outbox_warning_threshold:
+            warnings.append(
+                {
+                    "code": "outbox_depth_high",
+                    "severity": "warning",
+                    "message": "gateway outbox pending count is above the warning threshold",
+                }
+            )
+        if (
+            application.state.consecutive_delivery_failures
+            >= resolved.delivery_failure_warning_threshold
+        ):
+            warnings.append(
+                {
+                    "code": "repeated_delivery_failures",
+                    "severity": "warning",
+                    "message": "gateway has repeated cloud delivery failures",
+                }
+            )
+        return monitoring_payload(warnings)
 
     @application.get("/v1/outbox/status")
     async def outbox_status() -> dict[str, int | float | None]:
@@ -272,6 +381,7 @@ def create_app(
 
     @application.post("/v1/readings", status_code=status.HTTP_202_ACCEPTED)
     async def receive(reading: TemperatureReading) -> dict[str, str | bool]:
+        application.state.metrics.increment("readings_received_total")
         LOGGER.info(
             "event=gateway_reading_received message_id=%s sensor_id=%s crypto_mode=%s",
             reading.message_id,
@@ -281,6 +391,7 @@ def create_app(
         try:
             inserted = await asyncio.to_thread(outbox.enqueue, reading)
         except OutboxFullError:
+            application.state.metrics.increment("readings_rejected_total")
             LOGGER.error(
                 "event=outbox_full message_id=%s max_pending=%s",
                 reading.message_id,
@@ -291,6 +402,7 @@ def create_app(
                 detail="gateway outbox is full",
             ) from None
         except sqlite3.Error:
+            application.state.metrics.increment("readings_rejected_total")
             LOGGER.exception(
                 "event=outbox_write_failed message_id=%s",
                 reading.message_id,
@@ -300,6 +412,7 @@ def create_app(
                 detail="gateway outbox is unavailable",
             ) from None
 
+        application.state.metrics.increment("readings_accepted_total")
         application.state.outbox_wakeup.set()
         return {
             "status": "queued",

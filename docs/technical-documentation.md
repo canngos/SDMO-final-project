@@ -19,18 +19,29 @@ Gateway:
 
 - `POST /v1/readings`
 - `GET /health`
+- `GET /ready`
+- `GET /metrics`
+- `GET /monitoring`
+- `GET /v1/outbox/status`
 
 Sensor:
 
 - `GET /v1/readings/latest`: returns the latest locally generated raw reading.
 - `GET /health`: reports that the sensor API process is running.
+- `GET /ready`: reports whether the simulator has a reading and its forwarder is running.
+- `GET /metrics`: reports process-local generation and gateway-send counters.
+- `GET /monitoring`: reports local warning conditions such as repeated gateway send failures.
 
 Cloud:
 
 - `GET /v1/crypto/public-key`
+- `GET /v2/crypto/public-key`
 - `POST /v1/readings`
 - `GET /v1/readings`
 - `GET /health`
+- `GET /ready`
+- `GET /metrics`
+- `GET /monitoring`
 
 ## Baseline limitations
 
@@ -40,8 +51,19 @@ Cloud:
 - Sensor-to-gateway traffic is plaintext and unauthenticated.
 - Automated tests cover only two small cases.
 - CI only installs dependencies and runs tests.
-- Logs are plain console messages and there are no metrics, dashboards, alerts, or readiness checks.
+- Observability remains intentionally lightweight. The services expose JSON readiness, metrics, and monitoring endpoints, but there is no external dashboard or alerting system.
 - The original containerized environment was only a local test setup. A separate automated Docker Compose smoke-test workflow now verifies image build, startup, health endpoints, and one end-to-end reading, but this is still not a production deployment.
+
+## Operational observability
+
+The project distinguishes liveness from readiness:
+
+- `/health` means the service process can answer HTTP.
+- `/ready` means the service can perform its own role at that moment.
+
+The gateway does not become unready merely because the cloud is temporarily unavailable. Its durable SQLite outbox allows it to keep accepting readings until the outbox is unavailable, full, or the configured cryptographic mode is not usable. The sensor similarly remains ready while it can generate readings and run its retry loop. The cloud readiness check focuses on database access and key initialization.
+
+Metrics and warning conditions are documented in [observability.md](observability.md). Metrics avoid plaintext readings and cryptographic secrets. In-memory counters reset on restart; SQLite-derived gauges such as gateway outbox depth and current cloud row counts survive while their databases survive.
 
 These limitations are intentional starting conditions, not claims about a completed solution. The group should critically evaluate the implementation, discover additional issues, and record accepted, modified, and rejected AI output.
 

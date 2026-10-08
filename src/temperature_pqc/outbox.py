@@ -90,6 +90,14 @@ class GatewayOutbox:
         connection.row_factory = sqlite3.Row
         return connection
 
+    def ready(self) -> bool:
+        try:
+            with self._connect() as connection:
+                connection.execute("SELECT COUNT(*) FROM gateway_outbox").fetchone()
+            return True
+        except sqlite3.Error:
+            return False
+
     def enqueue(self, reading: TemperatureReading) -> bool:
         now = time.time()
         with self._connect() as connection:

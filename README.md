@@ -34,6 +34,10 @@ docker compose logs --follow sensor gateway cloud
 
 Copy a `message_id` from `event=reading_sampled` and search for it in later events such as `gateway_reading_received`, `cloud_envelope_received`, `cloud_payload_validated`, and `reading_persisted`.
 
+### Readiness, metrics, and monitoring
+
+Each service keeps `/health` as a simple liveness check and exposes separate `/ready`, `/metrics`, and `/monitoring` endpoints for operational inspection. Metrics are lightweight JSON values and in-memory counters reset when a service restarts; gateway outbox and cloud storage gauges are read from SQLite where possible. See [docs/observability.md](docs/observability.md) for readiness semantics, metric names, warning thresholds, and demo commands.
+
 ## Architecture
 
 ```mermaid
@@ -58,9 +62,12 @@ The simulator sends one reading every three seconds. Useful endpoints:
 
 - Latest raw sensor reading: <http://localhost:8002/v1/readings/latest>
 - Sensor health: <http://localhost:8002/health>
+- Sensor readiness, metrics, monitoring: <http://localhost:8002/ready>, <http://localhost:8002/metrics>, <http://localhost:8002/monitoring>
 - Cloud readings: <http://localhost:8000/v1/readings>
 - Cloud health: <http://localhost:8000/health>
+- Cloud readiness, metrics, monitoring: <http://localhost:8000/ready>, <http://localhost:8000/metrics>, <http://localhost:8000/monitoring>
 - Gateway health: <http://localhost:8001/health>
+- Gateway readiness, metrics, monitoring: <http://localhost:8001/ready>, <http://localhost:8001/metrics>, <http://localhost:8001/monitoring>
 
 Stop the environment with `docker compose down`. Add `-v` only when you intentionally want to delete the stored readings.
 
@@ -116,6 +123,7 @@ curl -X POST http://localhost:8001/v1/readings \
 
 - [Initial technical documentation](docs/technical-documentation.md)
 - [Baseline notes](docs/baseline-and-migration.md)
+- [Operational observability](docs/observability.md)
 - [AI-assisted development log](docs/ai-assisted-development-log-{student-name}.md)
 - [Seven-week project plan](docs/project-plan.md)
 
@@ -127,7 +135,7 @@ The AI log deliberately marks human review as pending. Group members must run th
 - Sensor-to-gateway traffic is plaintext.
 - Test coverage is limited to a crypto round-trip and one validation rule.
 - The main CI workflow has no linting, security scanning, or coverage threshold yet. A separate deployment smoke-test workflow now covers Docker image build and temporary Docker Compose startup, but not production deployment.
-- Monitoring has no metrics, dashboards, alerts, or readiness checks.
+- Monitoring is intentionally lightweight: JSON readiness, metrics, and warning endpoints are available, but there is no production alerting platform or dashboard.
 - Cloud RSA keys are regenerated whenever the process restarts.
 - The gateway does not authenticate the public-key response.
 - SQLite supports the demo workload, not a distributed production deployment.

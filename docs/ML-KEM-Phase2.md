@@ -102,13 +102,13 @@ Phase 2 intentionally avoids automatic fallback.
 | ML-KEM mode has no key pin | Gateway startup fails with a configuration error. |
 | Pinned key ID is malformed | Gateway startup fails with a configuration error. |
 | Cloud public-key response is malformed | Forwarding is rejected and no RSA request is made. |
-| Received key ID differs from the pin | Forwarding fails closed and the gateway cryptographic health becomes unavailable. |
+| Received key ID differs from the pin | Forwarding fails closed and the gateway readiness endpoint reports unavailable cryptographic readiness. |
 | Public-key bytes do not match their declared fingerprint | Forwarding fails closed and the substituted key is not used. |
 | Cloud is unreachable or returns an error | The request fails using the configured mode; RSA is not attempted. |
 | ML-KEM encryption or cloud ingestion fails | The failure is reported; RSA is not attempted. |
 | Operator explicitly selects RSA | The unchanged version 1 RSA flow is used. |
 
-After a key-validation failure, the gateway health endpoint returns HTTP 503. This makes the security failure visible to Docker health checks and operators. Ordinary cloud network failures return a forwarding error but do not silently change the selected cryptographic mode.
+After a key-validation failure, the gateway readiness endpoint returns HTTP 503 while `/health` remains a simple liveness endpoint. This makes the security failure visible to operators without confusing process liveness with readiness. Ordinary cloud network failures return a forwarding error but do not silently change the selected cryptographic mode.
 
 ## Logging and observability
 
@@ -125,7 +125,7 @@ The gateway logs the configured mode and uses the existing `message_id` correlat
 - `mlkem_key_validation_failed`
 - `gateway_forward_failed`
 
-The gateway health response also reports the selected `crypto_mode` when the cryptographic configuration is ready.
+The gateway readiness and metrics responses report the selected `crypto_mode` and whether cryptographic validation is currently ready.
 
 ## Verification performed
 
@@ -191,7 +191,7 @@ A successful sensor message should appear in cloud storage with `security_mode="
 4. ML-KEM key rotation and a controlled previous-key overlap window are not implemented.
 5. The sensor currently has no durable retry queue, so a reading can be lost during a service restart.
 6. Sensor-to-gateway traffic remains plaintext and outside the current ML-KEM migration scope.
-7. Operational monitoring still relies on logs and health checks rather than metrics, dashboards, and alerts.
+7. Operational monitoring now uses logs plus lightweight readiness, metrics, and warning endpoints rather than an external dashboard or alerting platform.
 
 The next migration checkpoint is to enable the normal gateway as an ML-KEM canary, observe live sensor traffic, demonstrate an explicit operator-controlled rollback to RSA, restore ML-KEM, and finally disable RSA ingestion only after the ML-KEM path is accepted as stable.
 

@@ -25,12 +25,16 @@ The main `.github/workflows/ci.yml`, `pyproject.toml`, and `src/temperature_pqc/
    - cloud `GET /health`
    - gateway `GET /health`
    - sensor `GET /health`
+   - cloud, gateway, and sensor `GET /ready`
    - sensor `GET /v1/readings/latest`
    - cloud `GET /v1/readings`
    - gateway `GET /v1/outbox/status`
+   - cloud, gateway, and sensor `GET /metrics`
+   - cloud, gateway, and sensor `GET /monitoring`
 8. The smoke test captures a sensor `message_id` and waits until the same message appears in cloud storage.
-9. If a step fails, the workflow prints service logs to help debugging.
-10. The workflow always stops the containers with `docker compose down --volumes --remove-orphans` and removes the temporary `data` directory.
+9. It confirms the lightweight monitoring endpoints report no active warnings in the normal deployment path.
+10. If a step fails, the workflow prints service logs to help debugging.
+11. The workflow always stops the containers with `docker compose down --volumes --remove-orphans` and removes the temporary `data` directory.
 
 ## How to run locally
 

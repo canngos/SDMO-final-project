@@ -53,7 +53,7 @@ Outbox state is observable through:
 GET /v1/outbox/status
 ```
 
-The response reports the number of pending readings, the age of the oldest pending reading, and the cumulative number of scheduled retries. The gateway health response also reports the current cryptographic mode and pending count.
+The response reports the number of pending readings, the age of the oldest pending reading, and the cumulative number of scheduled retries. The gateway readiness and metrics endpoints also report the current cryptographic mode and outbox state.
 
 ## Sensor retry behavior
 
@@ -146,7 +146,7 @@ The temporary verification environment was stopped afterward without deleting pe
 2. The outbox has a configurable finite capacity; when full, the gateway returns HTTP 503 and the sensor continues retrying its current reading.
 3. ML-KEM key rotation with a previous-key overlap window is not implemented.
 4. Initial key-fingerprint distribution is manual and would require an authenticated administrative channel in production.
-5. Monitoring uses structured logs, health endpoints, and outbox status rather than a full metrics and alerting platform.
+5. Monitoring uses structured logs, readiness checks, JSON metrics, warning endpoints, and outbox status rather than a full metrics and alerting platform.
 6. The simulation uses one gateway worker. A production multi-worker deployment would require additional queue-claiming coordination.
 7. RSA code remains available for a documented emergency rollback, although final cloud policy disables RSA ingestion.
 
