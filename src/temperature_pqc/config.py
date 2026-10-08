@@ -36,6 +36,7 @@ class CloudSettings:
     database_path: str
     mlkem_seed_path: str = "data/mlkem-768.seed"
     allow_rsa_ingest: bool = True
+    validation_failure_warning_threshold: int = 3
 
     @classmethod
     def from_env(cls) -> CloudSettings:
@@ -43,6 +44,10 @@ class CloudSettings:
             database_path=os.getenv("DATABASE_PATH", "data/readings.db"),
             mlkem_seed_path=os.getenv("MLKEM_SEED_PATH", "data/mlkem-768.seed"),
             allow_rsa_ingest=env_bool("ALLOW_RSA_INGEST", True),
+            validation_failure_warning_threshold=env_positive_int(
+                "CLOUD_VALIDATION_FAILURE_WARNING_THRESHOLD",
+                3,
+            ),
         )
 
 
@@ -57,6 +62,8 @@ class GatewaySettings:
     retry_initial_seconds: float = 1.0
     retry_max_seconds: float = 30.0
     outbox_poll_seconds: float = 0.5
+    outbox_warning_threshold: int = 10
+    delivery_failure_warning_threshold: int = 3
 
     def __post_init__(self) -> None:
         if self.crypto_mode not in {"rsa", "mlkem"}:
@@ -78,6 +85,12 @@ class GatewaySettings:
             )
         if self.outbox_poll_seconds <= 0:
             raise ValueError("GATEWAY_OUTBOX_POLL_SECONDS must be greater than zero")
+        if self.outbox_warning_threshold <= 0:
+            raise ValueError("GATEWAY_OUTBOX_WARNING_THRESHOLD must be greater than zero")
+        if self.delivery_failure_warning_threshold <= 0:
+            raise ValueError(
+                "GATEWAY_DELIVERY_FAILURE_WARNING_THRESHOLD must be greater than zero"
+            )
 
     @classmethod
     def from_env(cls) -> GatewaySettings:
@@ -99,6 +112,14 @@ class GatewaySettings:
             outbox_poll_seconds=env_positive_float(
                 "GATEWAY_OUTBOX_POLL_SECONDS", 0.5
             ),
+            outbox_warning_threshold=env_positive_int(
+                "GATEWAY_OUTBOX_WARNING_THRESHOLD",
+                10,
+            ),
+            delivery_failure_warning_threshold=env_positive_int(
+                "GATEWAY_DELIVERY_FAILURE_WARNING_THRESHOLD",
+                3,
+            ),
         )
 
 
@@ -109,6 +130,7 @@ class SensorSettings:
     interval_seconds: float
     timeout_seconds: float
     retry_seconds: float = 1.0
+    failure_warning_threshold: int = 3
 
     @classmethod
     def from_env(cls) -> SensorSettings:
@@ -118,4 +140,8 @@ class SensorSettings:
             interval_seconds=env_positive_float("SENSOR_INTERVAL_SECONDS", 3.0),
             timeout_seconds=env_positive_float("HTTP_TIMEOUT_SECONDS", 5.0),
             retry_seconds=env_positive_float("SENSOR_RETRY_SECONDS", 1.0),
+            failure_warning_threshold=env_positive_int(
+                "SENSOR_FAILURE_WARNING_THRESHOLD",
+                3,
+            ),
         )
