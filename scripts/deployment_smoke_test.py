@@ -50,6 +50,11 @@ def _wait_for_cloud_message(message_id: str) -> dict[str, Any]:
     raise RuntimeError(f"sensor message {message_id} did not reach the cloud")
 
 
+def _require_monitoring_ok(service: str, payload: dict[str, Any]) -> None:
+    if payload.get("status") != "ok":
+        raise RuntimeError(f"{service} monitoring reported warnings: {payload}")
+
+
 def main() -> int:
     try:
         _wait_for_json(f"{CLOUD_URL}/health", "cloud health endpoint")
@@ -58,6 +63,9 @@ def main() -> int:
             "gateway health endpoint",
         )
         _wait_for_json(f"{SENSOR_URL}/health", "sensor health endpoint")
+        _wait_for_json(f"{CLOUD_URL}/ready", "cloud readiness endpoint")
+        _wait_for_json(f"{GATEWAY_URL}/ready", "gateway readiness endpoint")
+        _wait_for_json(f"{SENSOR_URL}/ready", "sensor readiness endpoint")
 
         latest = _wait_for_json(
             f"{SENSOR_URL}/v1/readings/latest",
@@ -71,6 +79,27 @@ def main() -> int:
             f"{GATEWAY_URL}/v1/outbox/status",
             "gateway outbox status endpoint",
         )
+        cloud_metrics = _wait_for_json(f"{CLOUD_URL}/metrics", "cloud metrics endpoint")
+        gateway_metrics = _wait_for_json(
+            f"{GATEWAY_URL}/metrics",
+            "gateway metrics endpoint",
+        )
+        sensor_metrics = _wait_for_json(
+            f"{SENSOR_URL}/metrics",
+            "sensor metrics endpoint",
+        )
+        _require_monitoring_ok(
+            "cloud",
+            _wait_for_json(f"{CLOUD_URL}/monitoring", "cloud monitoring endpoint"),
+        )
+        _require_monitoring_ok(
+            "gateway",
+            _wait_for_json(f"{GATEWAY_URL}/monitoring", "gateway monitoring endpoint"),
+        )
+        _require_monitoring_ok(
+            "sensor",
+            _wait_for_json(f"{SENSOR_URL}/monitoring", "sensor monitoring endpoint"),
+        )
 
         print(
             "ok: reading delivered "
@@ -82,6 +111,12 @@ def main() -> int:
             "ok: gateway reports "
             f"crypto_mode={gateway_health.get('crypto_mode')} "
             f"outbox_pending={outbox.get('pending')}"
+        )
+        print(
+            "ok: metrics visible "
+            f"cloud_readings={cloud_metrics.get('readings_stored_current')} "
+            f"gateway_successes={gateway_metrics.get('cloud_delivery_successes_total')} "
+            f"sensor_successes={sensor_metrics.get('gateway_send_successes_total')}"
         )
     except Exception as exc:
         print(f"deployment smoke test failed: {exc}", file=sys.stderr)
