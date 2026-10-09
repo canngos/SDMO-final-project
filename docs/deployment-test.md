@@ -48,7 +48,7 @@ python scripts/deployment_smoke_test.py
 docker compose down --volumes --remove-orphans
 ```
 
-On GitHub, it can run automatically for pull requests, manually with `workflow_dispatch`, and on pushes to `feature/ahmed-deployment`.
+On GitHub, it runs automatically for pull requests and pushes to `master`, and it can also be started manually with `workflow_dispatch`.
 
 ## Verification completed on 2026-10-06
 

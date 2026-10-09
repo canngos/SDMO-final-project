@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -19,7 +20,7 @@ class ReadingStore:
     def initialize(self) -> None:
         if self.database_path != ":memory:":
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS readings (
@@ -53,14 +54,14 @@ class ReadingStore:
 
     def ready(self) -> bool:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 connection.execute("SELECT 1").fetchone()
             return True
         except sqlite3.Error:
             return False
 
     def metrics(self) -> dict[str, int]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 """
                 SELECT
@@ -78,7 +79,7 @@ class ReadingStore:
 
     def insert(self, reading: TemperatureReading, security_mode: str = "rsa") -> bool:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 connection.execute(
                     """
                     INSERT INTO readings
@@ -109,7 +110,7 @@ class ReadingStore:
             return False
 
     def list_recent(self, limit: int) -> list[dict[str, object]]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             rows = connection.execute(
                 """
                 SELECT message_id, sensor_id, temperature_c, measured_at,

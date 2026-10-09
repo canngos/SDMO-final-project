@@ -6,6 +6,7 @@ import logging
 import os
 import sqlite3
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,7 +35,7 @@ class GatewayOutbox:
         if self.database_path != ":memory:":
             path = Path(self.database_path)
             path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute(
                 """
@@ -92,7 +93,7 @@ class GatewayOutbox:
 
     def ready(self) -> bool:
         try:
-            with self._connect() as connection:
+            with closing(self._connect()) as connection, connection:
                 connection.execute("SELECT COUNT(*) FROM gateway_outbox").fetchone()
             return True
         except sqlite3.Error:
@@ -100,7 +101,7 @@ class GatewayOutbox:
 
     def enqueue(self, reading: TemperatureReading) -> bool:
         now = time.time()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute(
                 "SELECT 1 FROM gateway_outbox WHERE message_id = ?",
@@ -139,7 +140,7 @@ class GatewayOutbox:
 
     def next_due(self, now: float | None = None) -> PendingReading | None:
         effective_now = time.time() if now is None else now
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 """
                 SELECT payload_json, attempt_count, created_at
@@ -159,7 +160,7 @@ class GatewayOutbox:
         )
 
     def mark_delivered(self, message_id: str) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute(
                 "DELETE FROM gateway_outbox WHERE message_id = ?",
                 (message_id,),
@@ -173,7 +174,7 @@ class GatewayOutbox:
         initial_seconds: float,
         maximum_seconds: float,
     ) -> tuple[int, float] | None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT attempt_count FROM gateway_outbox WHERE message_id = ?",
@@ -207,7 +208,7 @@ class GatewayOutbox:
         return attempt_count, delay
 
     def status(self) -> dict[str, int | float | None]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection, connection:
             row = connection.execute(
                 "SELECT COUNT(*) AS pending, MIN(created_at) AS oldest FROM gateway_outbox"
             ).fetchone()
