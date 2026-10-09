@@ -17,10 +17,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "httpx2>=2.13,<3",
   "pytest>=8,<10",
   "pytest-cov",
   "ruff",
   "pip-audit",
+  "starlette>=1.7,<2",
 ]
 
 [tool.setuptools.packages.find]
@@ -28,4 +30,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
+filterwarnings = [
+  "error::ResourceWarning",
+]
 testpaths = ["tests"]
