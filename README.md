@@ -95,6 +95,8 @@ docker compose down --volumes --remove-orphans
 
 Use Python 3.12 or newer.
 
+Current verification: 89 tests pass with 100% statement coverage of the `temperature_pqc` application package (885 statements), checked on Windows and Linux Docker. CI requires a minimum of 90% statement coverage. Run `python -m pytest --cov=temperature_pqc --cov-fail-under=90 --cov-report=term-missing` after installing development dependencies. See [final testing verification](docs/testing-verification.md) for evidence and scope; historical baseline limitations below are not the current test status.
+
 ```bash
 python -m venv .venv
 # PowerShell: .venv\Scripts\Activate.ps1
@@ -133,9 +135,9 @@ The AI log deliberately marks human review as pending. Group members must run th
 
 - Classical RSA-2048 key transport is not post-quantum secure.
 - Sensor-to-gateway traffic is plaintext.
-- Test coverage is limited to a crypto round-trip and one validation rule.
-- The main CI workflow has no linting, security scanning, or coverage threshold yet. A separate deployment smoke-test workflow now covers Docker image build and temporary Docker Compose startup, but not production deployment.
+- The initial baseline had two small tests. The expanded suite now covers all application statements; this does not establish exhaustive input or branch coverage.
+- The main CI workflow now performs linting, tests with a 90% statement-coverage threshold, dependency auditing, and Docker builds. The separate deployment workflow verifies temporary Docker Compose startup and delivery, not production deployment.
 - Monitoring is intentionally lightweight: JSON readiness, metrics, and warning endpoints are available, but there is no production alerting platform or dashboard.
 - Cloud RSA keys are regenerated whenever the process restarts.
-- The gateway does not authenticate the public-key response.
+- The ML-KEM path pins the cloud public key through a trusted configured fingerprint. The legacy RSA path lacks equivalent pinning; gateway identity and HTTP delivery acknowledgements are not cryptographically authenticated by this application protocol.
 - SQLite supports the demo workload, not a distributed production deployment.

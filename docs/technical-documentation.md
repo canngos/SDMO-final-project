@@ -4,6 +4,10 @@
 
 This repository is the functional but intentionally incomplete legacy starting point for the course project. It contains a simulated device, an edge gateway, and a cloud service written in Python.
 
+## Current verification update 10 October 2026
+
+The baseline descriptions below document the project's starting point. The completed migration and operational implementation now has 89 passing tests and 100% statement coverage across all 885 statements in `temperature_pqc`, verified on Windows Python 3.14.8 and Docker Python 3.12.14. CI requires a minimum of 90% statement coverage. Ruff passed, and the dependency audit reported no known vulnerabilities in audited dependencies. See [testing verification](testing-verification.md) for the added tests, environments, commands, and limitations. Historical test counts below remain dated observations.
+
 ## Data flow
 
 1. The sensor generates a temperature reading with a UUID and UTC timestamp.
